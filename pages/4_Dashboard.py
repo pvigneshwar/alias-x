@@ -249,7 +249,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-ocr = st.session_state.ocr_data or get_empty_data()
+ocr = st.session_state.get("ocr_data", get_empty_data())
 
 # Load fresh OCR data only when new file uploaded
 if "profile_loaded" not in st.session_state:
