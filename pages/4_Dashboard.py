@@ -250,7 +250,7 @@ st.markdown(
 ocr = st.session_state.ocr_data or get_empty_data()
 col_l, col_r = st.columns(2)
 with col_l:
-    st.text_input("▸ SUBJECT NAME",         value=ocr.get("name",""),       disabled=True, key="d_name")
+    st.text_input("▸ SUBJECT NAME",         value=ocr.get("name",""),        key="d_name")
     st.text_input("▸ DEGREE / QUALIFICATION",value=ocr.get("degree",""),     disabled=True, key="d_degree")
 with col_r:
     st.text_input("▸ ISSUING UNIVERSITY",    value=ocr.get("university",""), disabled=True, key="d_uni")
