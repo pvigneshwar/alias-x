@@ -24,7 +24,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from modules.ocr_engine import extract_details_from_certificate, get_empty_data
-from modules.ai_caller  import make_real_ai_call, get_call_status, analyze_transcript_verdict
+from modules.ai_caller     import make_real_ai_call, get_call_status, analyze_transcript_verdict
+from modules.email_tracker  import send_verification_email, check_email_reply
+from modules.contact_finder import find_university_contact
+from modules.consent_manager import generate_consent_pdf
 from modules.ui_helpers import inject_global_ui, get_page_icon, _load_image_b64
 
 load_dotenv(ROOT / ".env")
@@ -90,36 +93,13 @@ for k, v in {
     "call_id":       None,
     "call_result":   None,
     "email_result":  None,
+    "email_ref_id":  None,
+    "consent_path":  None,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 # ── Helpers ────────────────────────────────────────────────────
-def send_verification_email(to_email: str, data: dict) -> tuple:
-    smtp_user = os.getenv("SMTP_EMAIL", "").strip()
-    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
-    if not smtp_user or not smtp_pass:
-        return False, "SMTP credentials not configured."
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[ALIAS_X] Verification Request — {data.get('name','Unknown')}"
-    msg["From"]    = smtp_user
-    msg["To"]      = to_email
-    body = (f"Dear Registrar,\n\nALIAS_X verification request:\n\n"
-            f"  Student   : {data.get('name','N/A')}\n"
-            f"  University: {data.get('university','N/A')}\n"
-            f"  Degree    : {data.get('degree','N/A')}\n"
-            f"  Year      : {data.get('year','N/A')}\n\n"
-            f"Ref: ALIAS_X-{int(time.time())}\n—\nALIAS_X Autonomous Verification Protocol")
-    msg.attach(MIMEText(body, "plain"))
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as s:
-            s.login(smtp_user, smtp_pass)
-            s.sendmail(smtp_user, to_email, msg.as_string())
-        return True, f"Email dispatched to {to_email}"
-    except smtplib.SMTPAuthenticationError:
-        return False, "SMTP auth failed — check SMTP_EMAIL / SMTP_PASSWORD."
-    except Exception as e:
-        return False, f"Email error: {e}"
 
 def verdict_color(verdict: str) -> str:
     return {"CONFIRMED": "#00ffaa", "DENIED": "#ff003c"}.get(verdict, "#ffaa00")
@@ -168,6 +148,7 @@ if uploaded_file is None:
     st.session_state.call_id     = None
     st.session_state.call_result = None
     st.session_state.email_result = None
+    st.session_state.email_ref_id  = None
 else:
     if st.button("⚡ INITIATE EXTRACTION PROTOCOL", use_container_width=True):
         suffix = Path(uploaded_file.name).suffix or ".jpg"
@@ -186,6 +167,8 @@ else:
         st.session_state.call_id     = None
         st.session_state.call_result = None
         st.session_state.email_result = None
+        st.session_state.email_ref_id  = None
+        st.session_state.consent_path  = None
         st.success("✔ EXTRACTION COMPLETE — Review & validate below.")
 
 # ══════════════════════════════════════════════════════════════
@@ -204,6 +187,52 @@ with col2:
 with col3:
     st.text_input("▸ YEAR",         value=data.get("year", ""),       disabled=True)
 st.text_input("▸ DEGREE PROGRAM",   value=data.get("degree", ""),     disabled=True)
+
+# ══════════════════════════════════════════════════════════════
+#  SECTION 02b — CONSENT PDF + AUTO CONTACT FINDER
+# ══════════════════════════════════════════════════════════════
+st.markdown("---")
+st.markdown('<p class="section-num">02b · TOOLS</p>', unsafe_allow_html=True)
+
+col_consent, col_finder = st.columns(2)
+
+with col_consent:
+    st.markdown('<p style="color:#5a5a7a;font-size:.75rem;">Generate a consent PDF for the subject.</p>', unsafe_allow_html=True)
+    if st.button("📄 GENERATE CONSENT PDF", use_container_width=True,
+                 disabled=not data.get("name") or data.get("name") in ("Manual Check","")):
+        with st.spinner("Generating consent document..."):
+            path = generate_consent_pdf(data.get("name","Unknown"), data.get("university","Unknown"))
+        st.session_state.consent_path = path
+        st.success(f"✔ Consent PDF ready.")
+
+    if st.session_state.get("consent_path") and os.path.exists(st.session_state.consent_path):
+        with open(st.session_state.consent_path, "rb") as f:
+            file_bytes = f.read()
+        fname = os.path.basename(st.session_state.consent_path)
+        st.download_button("⬇ DOWNLOAD CONSENT PDF", data=file_bytes,
+                           file_name=fname, mime="application/pdf",
+                           use_container_width=True)
+
+with col_finder:
+    st.markdown('<p style="color:#5a5a7a;font-size:.75rem;">Auto-scan web for registrar contact details.</p>', unsafe_allow_html=True)
+    if st.button("🔍 AUTO-FIND REGISTRAR CONTACT", use_container_width=True,
+                 disabled=not data.get("university") or data.get("university") in ("Unknown","Manual Check","")):
+        with st.spinner(f"Scanning web for {data.get('university','')} contacts..."):
+            found = find_university_contact(data.get("university",""))
+        if found.get("phone"):
+            st.session_state.ph = found["phone"]
+            st.session_state.ocr_data["phone_number"] = found["phone"]
+            st.success(f"✔ Phone found: {found['phone']}")
+        else:
+            st.warning("No phone found — enter manually below.")
+        if found.get("email"):
+            st.session_state.ocr_data["email"] = found["email"]
+            st.success(f"✔ Email found: {found['email']}")
+        else:
+            st.warning("No email found — enter manually below.")
+        if found.get("source"):
+            st.caption(f"Source: {found['source']}")
+        st.rerun()
 
 # ══════════════════════════════════════════════════════════════
 #  SECTION 03 — INTELLIGENCE UPLINK CONTACTS
@@ -297,12 +326,19 @@ if st.button("⚡ INITIATE ALIAS_X UPLINK",
     if digital_ready:
         with st.status("📧 Initiating email uplink...", expanded=True) as status:
             st.write(f"▸ Dispatching to → `{target_email}`")
-            ok, msg = send_verification_email(target_email, data)
+            result = send_verification_email(target_email, data)
+            ok  = result["success"]
+            msg = result["message"]
+            ref = result.get("ref_id", "")
             st.write(f"▸ {'✔' if ok else '✖'} {msg}")
+            if ok and ref:
+                st.write(f"▸ Ref ID: `{ref}`")
+                st.write("▸ Monitoring inbox for registrar reply...")
+                st.session_state.email_ref_id = ref
             status.update(
                 label="📧 EMAIL UPLINK ESTABLISHED" if ok else "⚠ EMAIL UPLINK FAILED",
                 state="complete" if ok else "error", expanded=False)
-            st.session_state.email_result = {"success": ok, "message": msg}
+            st.session_state.email_result = {"success": ok, "message": msg, "ref_id": ref}
 
 elif st.session_state.uplink_sent:
     st.success("✔ UPLINK DISPATCHED — See results below.", icon="✔")
@@ -396,13 +432,55 @@ if st.session_state.call_id:
     <p style="color:#aaaacc;font-size:.8rem;margin:.5rem 0 0;">{reason}</p>
 </div>""", unsafe_allow_html=True)
 
-# ── Email Result ───────────────────────────────────────────────
-if st.session_state.email_result:
-    res = st.session_state.email_result
-    if res["success"]:
-        st.success(f"📧 {res['message']}", icon="📧")
-    else:
-        st.error(f"📧 {res['message']}")
+# ══════════════════════════════════════════════════════════════
+#  SECTION 07 — EMAIL REPLY TRACKING
+# ══════════════════════════════════════════════════════════════
+if st.session_state.get("email_ref_id"):
+    st.markdown("---")
+    st.markdown('<p class="section-num">07 · EMAIL REPLY TRACKER</p>', unsafe_allow_html=True)
+
+    ref_id = st.session_state.email_ref_id
+    col_re, col_ri = st.columns([1, 3])
+    with col_re:
+        check_email_btn = st.button("📬 CHECK FOR REPLY", use_container_width=True)
+    with col_ri:
+        st.markdown(f'<p style="color:#5a5a7a;font-size:.78rem;padding-top:.7rem;">' 
+                    f'Ref: <code style="color:#ff003c;">{ref_id}</code> — ' 
+                    f'Click to check if registrar has replied.</p>',
+                    unsafe_allow_html=True)
+
+    if check_email_btn:
+        with st.spinner("📬 Checking inbox for reply..."):
+            reply = check_email_reply(ref_id)
+
+        if not reply["replied"]:
+            st.info(f"⏳ No reply yet. The registrar may take time to respond. "
+                    f"Status: **{reply['verdict']}**", icon="⏳")
+        else:
+            verdict    = reply.get("verdict", "INCONCLUSIVE")
+            color      = verdict_color(verdict)
+            css_class  = verdict_css_class(verdict)
+            verdict_icon = {"CONFIRMED": "✅", "DENIED": "❌"}.get(verdict, "⚠️")
+
+            st.markdown(f"""
+<div class="verdict-box {css_class}">
+    <p class="verdict-label" style="color:{color};">{verdict_icon} {verdict}</p>
+    <p style="color:#aaaacc;font-size:.8rem;margin:.5rem 0 0;">
+        Reply from: <strong>{reply.get('from','Unknown')}</strong>
+    </p>
+    <p style="color:#5a5a7a;font-size:.7rem;margin:.3rem 0 0;">
+        Subject: {reply.get('subject','')}
+    </p>
+</div>""", unsafe_allow_html=True)
+
+            if reply.get("body"):
+                st.markdown('<p class="section-num" style="font-size:.65rem;margin-top:1rem;">REPLY CONTENT</p>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<div class="transcript-box">{reply["body"]}</div>',
+                            unsafe_allow_html=True)
+
+elif st.session_state.email_result and not st.session_state.email_result.get("success"):
+    st.error(f"📧 {st.session_state.email_result['message']}")
 
 # ── Footer ─────────────────────────────────────────────────────
 st.markdown("---")
