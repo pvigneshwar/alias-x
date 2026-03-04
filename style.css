@@ -14,12 +14,15 @@ header {
   visibility: hidden;
 }
 
-/* ─── Keep sidebar toggle always visible ─── */
-[data-testid="collapsedControl"] {
+/* ─── Keep sidebar toggle always visible — overrides header hidden ─── */
+[data-testid="collapsedControl"],
+[data-testid="collapsedControl"] *,
+[data-testid="collapsedControl"] button {
   visibility: visible !important;
   display: flex !important;
   opacity: 1 !important;
-  z-index: 999999 !important;
+  pointer-events: all !important;
+  z-index: 9999999 !important;
 }
 
 section[data-testid="stSidebar"][aria-expanded="false"]
@@ -207,15 +210,4 @@ div.stButton > button:hover[kind="primary"] {
   background-color: rgba(10, 10, 15, 0.88) !important;
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 0, 60, 0.35) !important;
-}
-/* ─── Show sidebar toggle button ─── */
-button[kind="header"] {
-  display: block !important;
-  visibility: visible !important;
-}
-
-[data-testid="collapsedControl"] {
-  display: flex !important;
-  visibility: visible !important;
-  color: #ff003c !important;
 }
