@@ -20,15 +20,15 @@ HEADERS = {
 
 # Internal fallback archive
 ARCHIVE = {
-    "madras":   {"phone": "044-2539 9422", "email": "registrar@unom.ac.in"},
-    "anna":     {"phone": "044-2235 2161", "email": "registrar@annauniv.edu"},
-    "iit":      {"phone": "044-2257 8000", "email": "registrar@iitm.ac.in"},
-    "vit":      {"phone": "0416-220 2020", "email": "registrar@vit.ac.in"},
-    "srm":      {"phone": "044-2745 5510", "email": "registrar@srmist.edu.in"},
-    "bits":     {"phone": "01596-242192", "email": "registrar@bits-pilani.ac.in"},
-    "mumbai":   {"phone": "022-2652 6091", "email": "registrar@mu.ac.in"},
-    "delhi":    {"phone": "011-2766 7011", "email": "registrar@du.ac.in"},
-    "bangalore":{"phone": "080-2296 1000", "email": "registrar@iisc.ac.in"},
+    "University of Madras":   {"phone": "044-2539 9422", "email": "registrar@unom.ac.in"},
+    "Anna University":     {"phone": "044-2235 2161", "email": "registrar@annauniv.edu"},
+    "IIT Madras":      {"phone": "044-2257 8000", "email": "registrar@iitm.ac.in"},
+    "VIT University":      {"phone": "0416-220 2020", "email": "registrar@vit.ac.in"},
+    "SRM Institute of Science and Technology":      {"phone": "044-2745 5510", "email": "registrar@srmist.edu.in"},
+    "Birla Institute of Technology and Science":     {"phone": "01596-242192", "email": "registrar@bits-pilani.ac.in"},
+    "University of Mumbai":   {"phone": "022-2652 6091", "email": "registrar@mu.ac.in"},
+    "University of Delhi":    {"phone": "011-2766 7011", "email": "registrar@du.ac.in"},
+    "University of Bangalore":{"phone": "080-2296 1000", "email": "registrar@iisc.ac.in"},
 }
 
 
