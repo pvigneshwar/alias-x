@@ -253,7 +253,7 @@ with col_l:
     st.text_input("▸ SUBJECT NAME",         value=ocr.get("name",""),        key="d_name")
     st.text_input("▸ DEGREE / QUALIFICATION",value=ocr.get("degree",""),     disabled=True, key="d_degree")
 with col_r:
-    st.text_input("▸ ISSUING UNIVERSITY",    value=ocr.get("university",""), disabled=True, key="d_uni")
+    st.text_input("▸ ISSUING UNIVERSITY",    value=ocr.get("university",""),  key="d_uni")
     st.text_input("▸ GRADUATION YEAR",       value=ocr.get("year",""),       disabled=True, key="d_year")
 
 # ══════════════════════════════════════════════════════════════
