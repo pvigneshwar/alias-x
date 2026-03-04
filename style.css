@@ -198,3 +198,14 @@ div.stButton > button:hover[kind="primary"] {
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 0, 60, 0.35) !important;
 }
+/* ─── Show sidebar toggle button ─── */
+button[kind="header"] {
+  display: block !important;
+  visibility: visible !important;
+}
+
+[data-testid="collapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  color: #ff003c !important;
+}
