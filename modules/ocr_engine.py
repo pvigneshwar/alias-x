@@ -159,7 +159,7 @@ Rules:
     # ── Send REST Request ──────────────────────────────────────
     endpoint = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-1.5-flash:generateContent?key={api_key}"
+        f"gemini-2.5-flash:generateContent?key={api_key}"
     )
 
     body_bytes = json.dumps(payload).encode("utf-8")
