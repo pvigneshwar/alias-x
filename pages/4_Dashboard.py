@@ -232,6 +232,10 @@ elif uploaded_file.name != st.session_state.last_filename:
         except OSError:
             pass
         st.session_state.ocr_data = ocr_result
+    # ── DEBUG (remove after fix) ────────────────────────────
+    api_ok = bool(os.getenv("GOOGLE_API_KEY","").strip())
+    st.caption(f"🔑 API KEY LOADED: {api_ok} | OCR NAME: {ocr_result.get('name','?')} | UNI: {ocr_result.get('university','?')}")
+    # ─────────────────────────────────────────────────────────
     st.success("✔ OCR EXTRACTION COMPLETE — Review & validate below.")
 
 # ══════════════════════════════════════════════════════════════
