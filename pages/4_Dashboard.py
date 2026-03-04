@@ -1,17 +1,16 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
 ║    ALIAS_X · Uplink Terminal Dashboard · pages/4_Dashboard.py ║
-║       Human-in-the-Loop Academic Verification Protocol        ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
 import os
-import re
 import sys
 import json
 import time
-import tempfile
+import base64
 import smtplib
+import tempfile
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -21,7 +20,7 @@ from email.mime.multipart import MIMEMultipart
 import streamlit as st
 from dotenv import load_dotenv
 
-# ── Path Resolution ────────────────────────────────────────────
+# ── Path & Imports ─────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -31,6 +30,12 @@ from modules.ui_helpers import inject_global_ui, get_page_icon, _load_image_b64
 
 load_dotenv(ROOT / ".env")
 
+# ── Simulation Config ──────────────────────────────────────────
+SIMULATION_MODE = os.getenv("USE_TEST_DATA", "FALSE").strip().upper() == "TRUE"
+TEST_PHONE      = os.getenv("TEST_PHONE_NUMBER", "").strip()
+TEST_EMAIL      = os.getenv("TEST_EMAIL_ADDRESS", "").strip()
+
+# ── Page Config ────────────────────────────────────────────────
 st.set_page_config(
     page_title="ALIAS_X · Uplink Terminal",
     page_icon=get_page_icon(),
@@ -40,19 +45,17 @@ st.set_page_config(
 inject_global_ui()
 
 st.markdown("""<style>
-.dashboard-header h1 { font-family:"Ethnocentric",sans-serif; color:#ff003c;
-                       font-size:1.6rem; letter-spacing:.2em; margin:0; }
-.channel-ready  { color:#00ffaa; font-size:.72rem; letter-spacing:.05em; }
-.channel-offline{ color:#ff003c; font-size:.72rem; letter-spacing:.05em; }
-.section-num    { color:#ff003c; font-family:"Ethnocentric",sans-serif;
-                  font-size:.7rem; letter-spacing:.2em; }
+.section-num { color:#ff003c; font-family:"Ethnocentric",sans-serif;
+               font-size:.7rem; letter-spacing:.2em; }
+.channel-ready   { color:#00ffaa; font-size:.72rem; letter-spacing:.05em; }
+.channel-offline { color:#ff003c; font-size:.72rem; letter-spacing:.05em; }
 </style>""", unsafe_allow_html=True)
 
 # ── Auth Guard ─────────────────────────────────────────────────
 if not st.session_state.get("logged_in", False):
     logo_b64 = _load_image_b64("aliasX_logo.png")
     logo_tag = (f'<img style="display:block;margin:0 auto;width:80px;border-radius:50%;" '
-                f'src="data:image/jpeg;base64,{logo_b64}" alt="AX"/>'
+                f'src="data:image/png;base64,{logo_b64}" alt="AX"/>'
                 if logo_b64 else "🔺")
     st.markdown(f"""
 <div style="max-width:400px;margin:3rem auto;text-align:center;
@@ -71,35 +74,25 @@ if not st.session_state.get("logged_in", False):
         st.switch_page("pages/2_Login.py")
     st.stop()
 
-# ── Session State ──────────────────────────────────────────────
-for k, v in {"ocr_data": None, "uplink_sent": False,
-              "uplink_log": [], "last_filename": None}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# ── Session State Init ─────────────────────────────────────────
+if "ocr_data" not in st.session_state:
+    st.session_state.ocr_data = get_empty_data()
+if "ph" not in st.session_state:
+    st.session_state.ph = ""
+if "uplink_sent" not in st.session_state:
+    st.session_state.uplink_sent = False
 
 # ── Helpers ────────────────────────────────────────────────────
-def is_valid_phone(phone):
-    s = phone.strip()
-    if not s:
-        return False
-    return re.sub(r"^\+", "", s).isdigit() and len(re.sub(r"^\+", "", s)) >= 7
-
-def is_valid_edu_email(email):
-    if not email or "@" not in email:
-        return False
-    return any(email.strip().lower().endswith(t) for t in (".ac", ".in", ".edu", ".college"))
-
-def trigger_bland_call(phone, subject_data):
+def trigger_bland_call(phone: str, data: dict) -> tuple:
     api_key = os.getenv("BLAND_API_KEY", "").strip()
     if not api_key:
         return False, "BLAND_API_KEY not configured."
     payload = {
         "phone_number": phone,
         "task": (f"You are an academic verification agent for ALIAS_X. "
-                 f"Verify credentials for {subject_data.get('name','Unknown')}, "
-                 f"{subject_data.get('degree','Unknown')} from "
-                 f"{subject_data.get('university','Unknown')}, "
-                 f"year {subject_data.get('year','Unknown')}."),
+                 f"Verify credentials for {data.get('name','Unknown')}, "
+                 f"{data.get('degree','Unknown')} from "
+                 f"{data.get('university','Unknown')}, year {data.get('year','Unknown')}."),
         "voice": "maya", "reduce_latency": True, "record": True, "max_duration": 4,
     }
     req = urllib.request.Request(
@@ -116,20 +109,20 @@ def trigger_bland_call(phone, subject_data):
     except Exception as e:
         return False, f"Voice uplink error: {e}"
 
-def send_verification_email(to_email, subject_data):
+def send_verification_email(to_email: str, data: dict) -> tuple:
     smtp_user = os.getenv("SMTP_EMAIL", "").strip()
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
     if not smtp_user or not smtp_pass:
         return False, "SMTP credentials not configured."
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[ALIAS_X] Verification Request — {subject_data.get('name','Unknown')}"
-    msg["From"] = smtp_user
-    msg["To"] = to_email
+    msg["Subject"] = f"[ALIAS_X] Verification Request — {data.get('name','Unknown')}"
+    msg["From"]    = smtp_user
+    msg["To"]      = to_email
     body = (f"Dear Registrar,\n\nALIAS_X verification request:\n\n"
-            f"  Student   : {subject_data.get('name','N/A')}\n"
-            f"  University: {subject_data.get('university','N/A')}\n"
-            f"  Degree    : {subject_data.get('degree','N/A')}\n"
-            f"  Year      : {subject_data.get('year','N/A')}\n\n"
+            f"  Student   : {data.get('name','N/A')}\n"
+            f"  University: {data.get('university','N/A')}\n"
+            f"  Degree    : {data.get('degree','N/A')}\n"
+            f"  Year      : {data.get('year','N/A')}\n\n"
             f"Ref: ALIAS_X-{int(time.time())}\n—\nALIAS_X Autonomous Verification Protocol")
     msg.attach(MIMEText(body, "plain"))
     try:
@@ -146,9 +139,13 @@ def send_verification_email(to_email, subject_data):
 op = st.session_state.get("operator_id", "OPERATOR").upper()
 col_hdr, col_op = st.columns([3, 1])
 with col_hdr:
-    st.markdown(f"""
-<div class="dashboard-header">
-    <h1>▲ ALIAS_X UPLINK TERMINAL</h1>
+    st.markdown("""
+<div style="margin-bottom:1.5rem;">
+    <h1 style="font-family:'Ethnocentric',sans-serif;color:#ff003c;
+               font-size:1.6rem;letter-spacing:.2em;margin:0;
+               text-shadow:0 0 14px rgba(255,0,60,0.4);">
+        ▲ ALIAS_X UPLINK TERMINAL
+    </h1>
     <p style="color:#5a5a7a;font-size:.72rem;letter-spacing:.2em;margin:0;">
         AUTONOMOUS VERIFICATION PROTOCOL · ACADEMIC INTELLIGENCE UPLINK
     </p>
@@ -157,161 +154,172 @@ with col_op:
     st.markdown(f"""
 <div style="text-align:right;padding-top:1rem;">
     <span style="color:#00ffaa;font-size:.65rem;font-family:'Courier New',monospace;">
-        ● SESSION ACTIVE<br/><strong style="color:#ffffff;">{op}</strong>
+        ● SESSION ACTIVE<br/><strong style="color:#fff;">{op}</strong>
     </span>
 </div>""", unsafe_allow_html=True)
 
-# ── Section 01: Upload ─────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  SECTION 01 — CERTIFICATE UPLOAD
+# ══════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-num">01 · CERTIFICATE UPLOAD</p>', unsafe_allow_html=True)
 st.markdown('<p style="color:#5a5a7a;font-size:.78rem;">Upload certificate · Gemini Vision OCR auto-extracts intelligence.</p>', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader(
-    "DRAG & DROP CERTIFICATE — JPG · PNG · WEBP",
-    type=["jpg", "jpeg", "png", "webp", "bmp", "tiff"],
+    "UPLOAD CERTIFICATE SCANS",
+    type=["png", "jpg", "jpeg", "webp", "bmp", "tiff"],
     key="cert_uploader",
 )
 
 if uploaded_file is None:
-    if st.session_state.last_filename is not None:
-        st.session_state.ocr_data = None
-        st.session_state.uplink_sent = False
-        st.session_state.uplink_log = []
-        st.session_state.last_filename = None
-        st.rerun()
-elif uploaded_file.name != st.session_state.last_filename:
-    st.session_state.last_filename = uploaded_file.name
+    # Clear everything when file is removed
+    st.session_state.ocr_data   = get_empty_data()
+    st.session_state.ph         = ""
     st.session_state.uplink_sent = False
-    st.session_state.uplink_log = []
-    with st.spinner("🔍 INITIALISING GEMINI OCR SCAN…"):
-        suffix = Path(uploaded_file.name).suffix
+else:
+    if st.button("⚡ INITIATE EXTRACTION PROTOCOL", use_container_width=True):
+        suffix   = Path(uploaded_file.name).suffix or ".jpg"
+        tmp_path = None
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(uploaded_file.getvalue())
+            tmp.write(uploaded_file.getbuffer())
             tmp_path = tmp.name
-        result = extract_details_from_certificate(tmp_path)
+        with st.spinner("🔍 Scanning document via ALIAS_X Vision..."):
+            extracted = extract_details_from_certificate(tmp_path)
         try:
-            os.unlink(tmp_path)
+            os.remove(tmp_path)
         except OSError:
             pass
-        st.session_state.ocr_data = result
-    # Debug line — shows API key status and extracted name
-    api_ok = bool(os.getenv("GOOGLE_API_KEY", "").strip())
-    ocr = st.session_state.ocr_data or get_empty_data()
-    st.caption(f"🔑 API KEY LOADED: {api_ok} | NAME: {ocr.get('name','?')} | UNI: {ocr.get('university','?')}")
-    st.success("✔ OCR EXTRACTION COMPLETE — Review & validate below.")
+        st.session_state.ocr_data    = extracted
+        st.session_state.ph          = extracted.get("phone_number", "")
+        st.session_state.uplink_sent = False
+        st.success("✔ EXTRACTION COMPLETE — Review & validate below.")
 
-# ── Section 02: Subject Profile ────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  SECTION 02 — SUBJECT PROFILE
+# ══════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-num">02 · SUBJECT PROFILE</p>', unsafe_allow_html=True)
-st.markdown('<p style="color:#5a5a7a;font-size:.78rem;">AI-extracted data. You may correct any field before uplink.</p>', unsafe_allow_html=True)
+st.markdown('<p style="color:#5a5a7a;font-size:.78rem;">AI-extracted data. Correct any field before uplink.</p>', unsafe_allow_html=True)
 
-ocr = st.session_state.ocr_data or get_empty_data()
-col_l, col_r = st.columns(2)
-with col_l:
-    name   = st.text_input("▸ SUBJECT NAME",          value=ocr.get("name", ""),       key="d_name")
-    degree = st.text_input("▸ DEGREE / QUALIFICATION", value=ocr.get("degree", ""),     key="d_degree")
-with col_r:
-    uni    = st.text_input("▸ ISSUING UNIVERSITY",     value=ocr.get("university", ""), key="d_uni")
-    year   = st.text_input("▸ GRADUATION YEAR",        value=ocr.get("year", ""),       key="d_year")
+data = st.session_state.ocr_data
 
-# ── Section 03: Uplink Contacts ────────────────────────────────
+col1, col2, col3 = st.columns([2, 2, 1])
+with col1:
+    st.text_input("▸ FULL NAME",    value=data.get("name", ""),       disabled=True)
+with col2:
+    st.text_input("▸ UNIVERSITY",   value=data.get("university", ""), disabled=True)
+with col3:
+    st.text_input("▸ YEAR",         value=data.get("year", ""),        disabled=True)
+
+st.text_input("▸ DEGREE PROGRAM",  value=data.get("degree", ""),      disabled=True)
+
+# ══════════════════════════════════════════════════════════════
+#  SECTION 03 — INTELLIGENCE UPLINK
+# ══════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-num">03 · INTELLIGENCE UPLINK</p>', unsafe_allow_html=True)
 st.markdown('<p style="color:#5a5a7a;font-size:.78rem;">Correct extracted contacts before uplink.</p>', unsafe_allow_html=True)
 
-col_ph, col_em = st.columns(2)
-with col_ph:
-    raw_phone = st.text_input("▸ UNIVERSITY PHONE (REGISTRAR)",
-                              value=ocr.get("phone_number", ""),
-                              placeholder="+91XXXXXXXXXX", key="input_phone")
-with col_em:
-    raw_email = st.text_input("▸ UNIVERSITY EMAIL (REGISTRAR)",
-                              value=ocr.get("email", ""),
-                              placeholder="registrar@university.ac.in", key="input_email")
+col4, col5 = st.columns(2)
 
-phone_ok = is_valid_phone(raw_phone)
-email_ok = is_valid_edu_email(raw_email)
+with col4:
+    edited_phone = st.text_input(
+        "▸ REGISTRAR PHONE (DIGITS ONLY)",
+        value=st.session_state.ph,
+        placeholder="+91XXXXXXXXXX",
+        key="input_phone",
+    )
+    voice_ready = False
+    if edited_phone and edited_phone not in ["Unknown", "Manual Check"]:
+        clean = edited_phone.lstrip("+")
+        if clean.isdigit() and len(clean) >= 7:
+            voice_ready = True
+            st.session_state.ph = edited_phone
+        else:
+            st.error("⚠ Phone must contain digits only (min 7), optional leading +")
 
-if raw_phone and not phone_ok:
-    st.error("⚠ PHONE VALIDATION FAILED — digits only (min 7), optional leading +")
-if raw_email and not email_ok:
-    st.error("⚠ EMAIL VALIDATION FAILED — must end with .ac · .in · .edu · .college")
+with col5:
+    edited_email = st.text_input(
+        "▸ REGISTRAR EMAIL",
+        value=data.get("email", ""),
+        placeholder="registrar@university.ac.in",
+        key="input_email",
+    )
+    digital_ready = False
+    if edited_email and edited_email not in ["Unknown", "Manual Check"]:
+        valid_domains = (".ac", ".in", ".edu", ".college")
+        if edited_email.lower().endswith(valid_domains):
+            digital_ready = True
+            st.session_state.ocr_data["email"] = edited_email
+        else:
+            st.error("⚠ Email must end in .ac · .in · .edu · .college")
 
-# ── Section 04: Channel Status ─────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  SECTION 04 — CHANNEL STATUS
+# ══════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-num">04 · CHANNEL STATUS</p>', unsafe_allow_html=True)
-col_v, col_e = st.columns(2)
-with col_v:
-    st.checkbox("VOICE CHANNEL · BLAND AI AGENT", value=phone_ok, key="cb_voice", disabled=True)
-    st.markdown(f'<span class="{"channel-ready" if phone_ok else "channel-offline"}">'
-                f'{"● READY — Voice uplink armed." if phone_ok else "○ OFFLINE — Provide valid phone."}'
-                f'</span>', unsafe_allow_html=True)
-with col_e:
-    st.checkbox("EMAIL CHANNEL · ENCRYPTED SMTP", value=email_ok, key="cb_email", disabled=True)
-    st.markdown(f'<span class="{"channel-ready" if email_ok else "channel-offline"}">'
-                f'{"● READY — Email channel armed." if email_ok else "○ OFFLINE — Provide valid email."}'
-                f'</span>', unsafe_allow_html=True)
 
-# ── Section 05: Execution ──────────────────────────────────────
+col6, col7 = st.columns(2)
+with col6:
+    st.checkbox("VOICE CHANNEL · BLAND AI AGENT",  value=voice_ready,   disabled=True)
+    st.markdown(
+        f'<span class="{"channel-ready" if voice_ready else "channel-offline"}">'
+        f'{"● READY — Voice uplink armed." if voice_ready else "○ OFFLINE — Provide valid phone."}'
+        f'</span>', unsafe_allow_html=True)
+with col7:
+    st.checkbox("EMAIL CHANNEL · ENCRYPTED SMTP",  value=digital_ready, disabled=True)
+    st.markdown(
+        f'<span class="{"channel-ready" if digital_ready else "channel-offline"}">'
+        f'{"● READY — Email channel armed." if digital_ready else "○ OFFLINE — Provide valid email."}'
+        f'</span>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════
+#  SECTION 05 — EXECUTION PROTOCOL
+# ══════════════════════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<p class="section-num">05 · EXECUTION PROTOCOL</p>', unsafe_allow_html=True)
 
-at_least_one = phone_ok or email_ok
-use_test   = os.getenv("USE_TEST_DATA", "FALSE").strip().upper() == "TRUE"
-test_phone = os.getenv("TEST_PHONE_NUMBER", "").strip()
-test_email = os.getenv("TEST_EMAIL_ADDRESS", "").strip()
+system_ready = voice_ready or digital_ready
 
-if use_test:
-    st.warning(f"⚡ SIMULATION ACTIVE — Phone: `{test_phone or 'NOT SET'}` | Email: `{test_email or 'NOT SET'}`", icon="⚡")
-if not at_least_one:
+if SIMULATION_MODE:
+    st.warning(f"⚡ SIMULATION ACTIVE — Phone: `{TEST_PHONE or 'NOT SET'}` | Email: `{TEST_EMAIL or 'NOT SET'}`", icon="⚡")
+if not system_ready:
     st.info("🔒 UPLINK LOCKED — Provide at least one valid contact channel.", icon="🔒")
 
-initiate = st.button(
-    "⚡ INITIATE ALIAS_X UPLINK",
-    disabled=not at_least_one or st.session_state.uplink_sent,
-    key="btn_uplink",
-    use_container_width=True,
-)
+if st.button("⚡ INITIATE ALIAS_X UPLINK",
+             use_container_width=True,
+             disabled=not system_ready or st.session_state.uplink_sent):
 
-if initiate and at_least_one:
     st.session_state.uplink_sent = True
-    subject_data = {"name": name, "university": uni, "degree": degree, "year": year}
-    tgt_phone = test_phone if use_test else raw_phone.strip()
-    tgt_email = test_email if use_test else raw_email.strip()
-    log = []
+    target_phone = TEST_PHONE if SIMULATION_MODE else edited_phone
+    target_email = TEST_EMAIL if SIMULATION_MODE else edited_email
 
-    with st.status("⚡ ALIAS_X UPLINK SEQUENCE INITIATED…", expanded=True) as status:
-        st.write("▸ Validating payload integrity…"); time.sleep(0.6)
-        st.write(f"▸ Subject: **{name}** | **{uni}** | **{degree}** ({year})"); time.sleep(0.4)
-        st.write(f"▸ {'⚡ SIMULATION MODE' if use_test else '🔴 LIVE MODE'} — routing contacts…"); time.sleep(0.4)
+    st.markdown("### 🌐 UPLINK STATUS LOG")
 
-        if phone_ok and tgt_phone:
-            st.write(f"▸ Dialling → `{tgt_phone}`…"); time.sleep(0.8)
-            ok, msg = trigger_bland_call(tgt_phone, subject_data)
-            st.write(f"▸ [{'✔' if ok else '✖'}] VOICE: {msg}")
-            log.append(f"[{'OK' if ok else 'ERR'}] VOICE: {msg}"); time.sleep(0.4)
+    if voice_ready:
+        with st.status("Initiating Voice Protocol...", expanded=True) as status:
+            st.write(f"[*] Locking target coordinates: {target_phone}")
+            st.write("[*] Bridging connection to Bland AI Execution Agent...")
+            ok, msg = trigger_bland_call(target_phone, data)
+            st.write(f"[{'✔' if ok else '✖'}] {msg}")
+            status.update(
+                label="🎙️ VOICE UPLINK ESTABLISHED" if ok else "⚠ VOICE UPLINK FAILED",
+                state="complete" if ok else "error", expanded=False)
+        if ok:
+            st.success("Verification Agent is currently on the line.")
 
-        if email_ok and tgt_email:
-            st.write(f"▸ Dispatching email → `{tgt_email}`…"); time.sleep(0.8)
-            ok, msg = send_verification_email(tgt_email, subject_data)
-            st.write(f"▸ [{'✔' if ok else '✖'}] EMAIL: {msg}")
-            log.append(f"[{'OK' if ok else 'ERR'}] EMAIL: {msg}"); time.sleep(0.4)
-
-        st.write("▸ Uplink complete. Awaiting university response…"); time.sleep(0.5)
-        has_err = any(l.startswith("[ERR]") for l in log)
-        status.update(
-            label="⚠ UPLINK COMPLETED WITH WARNINGS" if has_err else "✔ ALIAS_X UPLINK SUCCESSFUL",
-            state="error" if has_err else "complete",
-            expanded=False,
-        )
-
-    st.session_state.uplink_log = log
-    if log:
-        st.markdown("### UPLINK LOG")
-        for entry in log:
-            color = "#00ffaa" if entry.startswith("[OK]") else "#ff003c"
-            st.markdown(f'<p style="font-family:\'Courier New\',monospace;font-size:.8rem;color:{color};">{entry}</p>',
-                        unsafe_allow_html=True)
+    if digital_ready:
+        with st.status("Initiating Digital Protocol...", expanded=True) as status:
+            st.write(f"[*] Routing to {target_email}...")
+            st.write("[*] Authenticating SMTP Server...")
+            ok, msg = send_verification_email(target_email, data)
+            st.write(f"[{'✔' if ok else '✖'}] {msg}")
+            status.update(
+                label="📧 DIGITAL UPLINK ESTABLISHED" if ok else "⚠ EMAIL UPLINK FAILED",
+                state="complete" if ok else "error", expanded=False)
+        if ok:
+            st.success("Verification payload delivered to registrar.")
 
 elif st.session_state.uplink_sent:
     st.success("✔ UPLINK ALREADY DISPATCHED this session. Upload new certificate to re-run.", icon="✔")
