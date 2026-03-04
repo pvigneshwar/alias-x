@@ -6,12 +6,41 @@
 """
 
 import base64
-import sys
+import os
 import streamlit as st
 from pathlib import Path
 
-# ── Project Root ──────────────────────────────────────────────
-ROOT = Path(__file__).parent.parent
+
+# ── Project Root — robust for local dev AND Streamlit Cloud ───
+#
+# On Streamlit Cloud, the working directory is the repo root.
+# Locally, __file__ is at <root>/modules/ui_helpers.py.
+# We try several candidates and pick the first one that contains
+# either style.css or cyber_bg.png (our anchor files).
+#
+def _find_root() -> Path:
+    candidates = [
+        Path(__file__).resolve().parent.parent,   # modules/ → root  (local)
+        Path(os.getcwd()),                         # cwd (Streamlit Cloud)
+        Path(os.getcwd()) / "Alias_X",             # if deployed in subfolder
+        Path(__file__).resolve().parent,           # flat layout edge case
+    ]
+    # walk up cwd ancestry as extra safety net
+    p = Path(os.getcwd())
+    for _ in range(4):
+        p = p.parent
+        candidates.append(p)
+
+    for c in candidates:
+        if (c / "style.css").exists() or (c / "cyber_bg.png").exists():
+            return c.resolve()
+
+    # Nothing found — return the original guess so the rest of the
+    # code can handle missing files gracefully (empty strings / fallbacks)
+    return Path(__file__).resolve().parent.parent
+
+
+ROOT = _find_root()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -22,7 +51,14 @@ def _load_image_b64(filename: str) -> str:
     """Return a base64-encoded string for the given image file."""
     path = ROOT / filename
     if not path.exists():
-        return ""
+        # second attempt: search common alternative locations
+        for alt in [Path(os.getcwd()) / filename,
+                    Path(__file__).resolve().parent.parent / filename]:
+            if alt.exists():
+                path = alt
+                break
+        else:
+            return ""
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
@@ -31,7 +67,12 @@ def _load_css() -> str:
     """Read style.css from project root."""
     css_path = ROOT / "style.css"
     if not css_path.exists():
-        return ""
+        # fallback
+        alt = Path(os.getcwd()) / "style.css"
+        if alt.exists():
+            css_path = alt
+        else:
+            return ""
     with open(css_path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -43,9 +84,10 @@ def get_page_icon():
     """
     try:
         from PIL import Image as PILImage
-        logo_path = ROOT / "aliasX_logo.png"
-        if logo_path.exists():
-            return PILImage.open(logo_path)
+        for candidate in [ROOT / "aliasX_logo.png",
+                          Path(os.getcwd()) / "aliasX_logo.png"]:
+            if candidate.exists():
+                return PILImage.open(candidate)
     except Exception:
         pass
     return "🔺"
@@ -184,8 +226,6 @@ section[data-testid="stSidebar"] > div:first-child {
 hr {
     border-color: rgba(255, 0, 60, 0.3) !important;
 }
-
-/* ─── Page icon in browser tab (handled by PIL in set_page_config) ─── */
 """
 
     # ── Combine & inject ──────────────────────────────────────
