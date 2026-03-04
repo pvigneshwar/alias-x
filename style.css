@@ -9,12 +9,18 @@
 }
 
 #MainMenu,
-footer,
-header {
+footer {
   visibility: hidden;
 }
 
-/* ─── Keep sidebar toggle always visible — overrides header hidden ─── */
+header {
+  background: transparent !important;
+}
+
+header > * {
+  visibility: hidden;
+}
+
 [data-testid="collapsedControl"],
 [data-testid="collapsedControl"] *,
 [data-testid="collapsedControl"] button {
