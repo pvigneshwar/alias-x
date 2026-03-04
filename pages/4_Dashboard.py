@@ -26,6 +26,7 @@ ROOT = Path(__file__).parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from modules import ocr_engine
 from modules.ocr_engine  import extract_details_from_certificate, get_empty_data
 from modules.ui_helpers  import inject_global_ui, get_page_icon, _load_image_b64
 
@@ -232,11 +233,18 @@ elif uploaded_file.name != st.session_state.last_filename:
         except OSError:
             pass
         st.session_state.ocr_data = ocr_result
+
+# Load extracted values into editable fields
+st.session_state.d_name   = ocr_result.get("name", "")
+st.session_state.d_degree = ocr_result.get("degree", "")
+st.session_state.d_uni    = ocr_result.get("university", "")
+st.session_state.d_year   = ocr_result.get("year", "")
+    
     # ── DEBUG (remove after fix) ────────────────────────────
-    api_ok = bool(os.getenv("GOOGLE_API_KEY","").strip())
-    st.caption(f"🔑 API KEY LOADED: {api_ok} | OCR NAME: {ocr_result.get('name','?')} | UNI: {ocr_result.get('university','?')}")
+api_ok = bool(os.getenv("GOOGLE_API_KEY","").strip())
+st.caption(f"🔑 API KEY LOADED: {api_ok} | OCR NAME: {ocr_result.get('name','?')} | UNI: {ocr_result.get('university','?')}")
     # ─────────────────────────────────────────────────────────
-    st.success("✔ OCR EXTRACTION COMPLETE — Review & validate below.")
+st.success("✔ OCR EXTRACTION COMPLETE — Review & validate below.")
 
 # ══════════════════════════════════════════════════════════════
 #  SECTION 02 — STUDENT PROFILE (Editable)
@@ -248,18 +256,6 @@ st.markdown(
     'You may correct any incorrect field.</p>',
     unsafe_allow_html=True
 )
-
-ocr = st.session_state.get("ocr_data") or get_empty_data()
-# Load fresh OCR data only when new file uploaded
-if "profile_loaded" not in st.session_state:
-    st.session_state.profile_loaded = False
-
-if not st.session_state.profile_loaded:
-    st.session_state.d_name   = ocr.get("name", "")
-    st.session_state.d_degree = ocr.get("degree", "")
-    st.session_state.d_uni    = ocr.get("university", "")
-    st.session_state.d_year   = ocr.get("year", "")
-    st.session_state.profile_loaded = True
 
 col_l, col_r = st.columns(2)
 
@@ -284,12 +280,12 @@ st.markdown(
 col_ph, col_em = st.columns(2)
 with col_ph:
     raw_phone = st.text_input("▸ UNIVERSITY PHONE (REGISTRAR)",
-                              value=ocr.get("phone_number",""),
+                              value=ocr_engine.get("phone_number",""),
                               placeholder="+91XXXXXXXXXX or digits only",
                               key="input_phone")
 with col_em:
     raw_email = st.text_input("▸ UNIVERSITY EMAIL (REGISTRAR)",
-                              value=ocr.get("email",""),
+                              value=ocr_engine.get("email",""),
                               placeholder="registrar@university.ac.in",
                               key="input_email")
 
@@ -346,7 +342,7 @@ initiate = st.button(
 
 if initiate and at_least_one:
     st.session_state.uplink_sent = True
-    subject_data = {k: ocr.get(k,"Unknown") for k in ["name","university","degree","year"]}
+    subject_data = {k: ocr_engine.get(k,"Unknown") for k in ["name","university","degree","year"]}
     tgt_phone = test_phone if use_test else raw_phone.strip()
     tgt_email = test_email if use_test else raw_email.strip()
     log = []
