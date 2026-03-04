@@ -1,4 +1,5 @@
 # ALIAS_X · DEPLOYMENT & PACKAGING PROTOCOLS
+
 ## Windows .EXE + Android .APK — Web Wrapper Strategy
 
 ---
@@ -16,12 +17,13 @@ git push -u origin main
 # 2. Go to https://share.streamlit.io → "New app"
 #    Repository: YOUR_USERNAME/alias-x
 #    Main file:  app.py
-#    Add secrets from .env in "Advanced settings → Secrets"
+#    Add secrets from .env in "Advanced settings → Secrets" "yblf bcwq haks iron"
 ```
 
 Your live URL will be: `https://alias-x-uplink.streamlit.app`
 
 ### Required: streamlit config (`.streamlit/config.toml`)
+
 ```toml
 [server]
 headless = true
@@ -44,6 +46,7 @@ primaryColor = "#ff003c"
 ## PART 2 — WINDOWS .EXE PROTOCOL (Electron/Nativefier)
 
 ### Prerequisites
+
 ```bash
 # Install Node.js (v18+) from https://nodejs.org
 node --version   # verify: v18.x.x or higher
@@ -51,6 +54,7 @@ npm --version    # verify: 9.x.x or higher
 ```
 
 ### Option A: Nativefier (Simplest — one command)
+
 ```bash
 # Install Nativefier globally
 npm install -g nativefier
@@ -81,11 +85,12 @@ npm install --save-dev electron electron-builder
 ```
 
 **Create `main.js`:**
-```javascript
-const { app, BrowserWindow, Menu } = require('electron');
-const path = require('path');
 
-const APP_URL = 'https://alias-x-uplink.streamlit.app';
+```javascript
+const { app, BrowserWindow, Menu } = require("electron");
+const path = require("path");
+
+const APP_URL = "https://alias-x-uplink.streamlit.app";
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -93,10 +98,10 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#000000',
-    icon: path.join(__dirname, 'assets/alias_x_icon.ico'),
-    title: 'ALIAS_X — Autonomous Verification Protocol',
-    titleBarStyle: 'default',
+    backgroundColor: "#000000",
+    icon: path.join(__dirname, "assets/alias_x_icon.ico"),
+    title: "ALIAS_X — Autonomous Verification Protocol",
+    titleBarStyle: "default",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -111,21 +116,26 @@ function createWindow() {
   win.loadURL(APP_URL);
 
   // Show loading state
-  win.webContents.on('did-start-loading', () => {
-    win.setTitle('ALIAS_X — Connecting...');
+  win.webContents.on("did-start-loading", () => {
+    win.setTitle("ALIAS_X — Connecting...");
   });
 
-  win.webContents.on('did-finish-load', () => {
-    win.setTitle('ALIAS_X — Autonomous Verification Protocol');
+  win.webContents.on("did-finish-load", () => {
+    win.setTitle("ALIAS_X — Autonomous Verification Protocol");
   });
 }
 
 app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
 ```
 
 **Update `package.json`:**
+
 ```json
 {
   "name": "alias-x",
@@ -168,6 +178,7 @@ npm run build-win
 ```
 
 ### Icon Conversion (PNG → ICO)
+
 ```bash
 # Using ImageMagick
 magick convert alias_x_icon.png \
@@ -182,12 +193,14 @@ magick convert alias_x_icon.png \
 ### Option A: Android Studio WebView (Full control)
 
 **Step 1: Create new Android project**
+
 - Android Studio → New Project → Empty Views Activity
 - Name: `ALIAS_X` | Package: `com.aliasx.verification`
 - Min SDK: API 24 (Android 7.0)
 - Language: Kotlin
 
 **Step 2: Replace `AndroidManifest.xml`**
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -248,6 +261,7 @@ magick convert alias_x_icon.png \
 ```
 
 **Step 3: `res/xml/file_paths.xml`** (create this file)
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
@@ -257,6 +271,7 @@ magick convert alias_x_icon.png \
 ```
 
 **Step 4: `MainActivity.kt`**
+
 ```kotlin
 package com.aliasx.verification
 
@@ -399,6 +414,7 @@ class MainActivity : AppCompatActivity() {
 ```
 
 **Step 5: Build APK**
+
 ```
 Android Studio → Build → Build Bundle(s)/APK(s) → Build APK(s)
 Output: app/build/outputs/apk/debug/app-debug.apk
@@ -412,6 +428,7 @@ Build → Generate Signed Bundle/APK → APK → create keystore → release
 ### Option B: Bubblewrap / PWA (No Android Studio needed)
 
 **Prerequisites:**
+
 1. Your Streamlit app must serve a `manifest.json` and a service worker (add via a custom HTML component or host separately)
 2. Install Bubblewrap:
 
