@@ -8,17 +8,25 @@
   font-style: normal;
 }
 
-/* --- 1. GLOBAL SETTINGS --- */
 #MainMenu,
 footer,
 header {
   visibility: hidden;
 }
-/* --- 1. GLOBAL SETTINGS --- */
-#MainMenu,
-footer,
-header {
-  visibility: hidden;
+
+/* ─── Keep sidebar toggle always visible ─── */
+[data-testid="collapsedControl"] {
+    visibility: visible !important;
+    display: flex !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
+}
+
+section[data-testid="stSidebar"][aria-expanded="false"] ~ div [data-testid="collapsedControl"],
+[data-testid="collapsedControl"] button {
+    visibility: visible !important;
+    display: flex !important;
+    opacity: 1 !important;
 }
 
 /* Force basic fonts */
