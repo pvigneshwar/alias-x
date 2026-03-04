@@ -235,7 +235,10 @@ elif uploaded_file.name != st.session_state.last_filename:
         st.session_state.ocr_data = ocr_result
 
 # Load extracted values into editable fields
-st.session_state.d_name   = ocr_result.get("name", "")
+def new_func(ocr_result):
+    st.session_state.d_name   = ocr_result.get("name", "")
+
+new_func(ocr_result)
 st.session_state.d_degree = ocr_result.get("degree", "")
 st.session_state.d_uni    = ocr_result.get("university", "")
 st.session_state.d_year   = ocr_result.get("year", "")
@@ -280,12 +283,12 @@ st.markdown(
 col_ph, col_em = st.columns(2)
 with col_ph:
     raw_phone = st.text_input("▸ UNIVERSITY PHONE (REGISTRAR)",
-                              value=ocr_engine.get("phone_number",""),
+                              value=ocr_result.get("phone_number",""),
                               placeholder="+91XXXXXXXXXX or digits only",
                               key="input_phone")
 with col_em:
     raw_email = st.text_input("▸ UNIVERSITY EMAIL (REGISTRAR)",
-                              value=ocr_engine.get("email",""),
+                              value=ocr_result.get("email",""),
                               placeholder="registrar@university.ac.in",
                               key="input_email")
 
@@ -342,7 +345,7 @@ initiate = st.button(
 
 if initiate and at_least_one:
     st.session_state.uplink_sent = True
-    subject_data = {k: ocr_engine.get(k,"Unknown") for k in ["name","university","degree","year"]}
+    subject_data = {k: ocr_result.get(k,"Unknown") for k in ["name","university","degree","year"]}
     tgt_phone = test_phone if use_test else raw_phone.strip()
     tgt_email = test_email if use_test else raw_email.strip()
     log = []
